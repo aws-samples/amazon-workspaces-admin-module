@@ -57,8 +57,18 @@ function Get-WorkSpacesInventory(){
     }
     $WorkSpacesInventory = @()
     $DeployedDirectories = @()
+    $errThreshold = 0
 
-    $RegionsCall = Get-WKSWorkspaceDirectories -Region $region
+    try{
+        $RegionsCall = Get-WKSWorkspaceDirectories -Region $region
+    }Catch{
+        $msg = $_
+        $logging = New-Object -TypeName PSobject
+        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Directories API Call"
+        $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
+        Write-Host $logging
+        exit
+    }
     if($directoryId){
         $RegionsCall = $RegionsCall | where {$_.DirectoryId -eq $directoryId}
     }
@@ -92,7 +102,20 @@ function Get-WorkSpacesInventory(){
                 $entry | Add-Member -NotePropertyName "BundleId" -NotePropertyValue $Wks.BundleId
                 if($connectedStatus -eq $true){
                     if($Wks.State -ne 'STOPPED'){
-                        $connectionState = Get-WKSWorkspacesConnectionStatus -WorkspaceId $Wks.WorkspaceId -region $region
+                        try{
+                            $connectionState = Get-WKSWorkspacesConnectionStatus -WorkspaceId $Wks.WorkspaceId -region $region
+                        }Catch{
+                            $errThreshold++
+                            $msg = $_
+                            $logging = New-Object -TypeName PSobject
+                            $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error Getting the Connection Status"
+                            $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
+                            Write-Host $logging
+                            if($errThreshold -eq 3){
+                                Write-Host "You have reached your API error threshold of $errThreshold failed calls. Exiting"
+                                exit
+                            }
+                        }
                         $entry | Add-Member -NotePropertyName "ConnectionState" -NotePropertyValue $connectionState.ConnectionState
                     }else{
                         $entry | Add-Member -NotePropertyName "ConnectionState" -NotePropertyValue "DISCONNECTED"
@@ -187,6 +210,8 @@ function Initialize-WorkSpacesReboot {
     if($response -like 'Y'){
         $counter = 0
         $builder = @()
+        # If three APIs fail the script will exit. Retries are not included in this count. 
+        $errThreshold = 0
         
         foreach($wks in $wksRebootList){
             $counter++
@@ -198,13 +223,32 @@ function Initialize-WorkSpacesReboot {
                     Write-Host $callBlock
                 }else{
                     try{
+                        Start-Sleep -Milliseconds 500
                         Invoke-Command -scriptblock $scriptblock
                     }Catch{
+                        $errThreshold++
                         $msg = $_
                         $logging = New-Object -TypeName PSobject
-                        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Rebuild"
+                        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Reboot"
                         $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
                         Write-Host $logging
+                        Write-Host "Retrying failed API call in two seconds.."
+                        try{
+                            Start-Sleep -seconds 2
+                            Invoke-Command -scriptblock $scriptblock
+                        }Catch{
+                            $msg = $_
+                            $logging = New-Object -TypeName PSobject
+                            $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Reboot"
+                            $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
+                            Write-Host $logging
+                        }
+                        if($errThreshold -eq 3){
+                            Write-Host "You have reached an API error threshold of $errThreshold failed calls. Exiting"
+                            exit
+                        }else{
+                            Write-Host "API failure count is under the error threshold of $errThreshold. Moving to next call."
+                        }
                     }
                 }
             }
@@ -218,13 +262,32 @@ function Initialize-WorkSpacesReboot {
                     Write-Host $callBlock
                 }else{
                     try{
+                        Start-Sleep -Milliseconds 500
                         Invoke-Command -scriptblock $scriptblock
                     }Catch{
+                        $errThreshold++
                         $msg = $_
                         $logging = New-Object -TypeName PSobject
-                        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Rebuild"
+                        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Reboot"
                         $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
                         Write-Host $logging
+                        Write-Host "Retrying failed API call in two seconds.."
+                        try{
+                            Start-Sleep -seconds 2
+                            Invoke-Command -scriptblock $scriptblock
+                        }Catch{
+                            $msg = $_
+                            $logging = New-Object -TypeName PSobject
+                            $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Reboot"
+                            $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
+                            Write-Host $logging
+                        }
+                        if($errThreshold -eq 3){
+                            Write-Host "You have reached an API error threshold of $errThreshold failed calls. Exiting"
+                            exit
+                        }else{
+                            Write-Host "API failure count is under the error threshold of $errThreshold. Moving to next call."
+                        }
                     }
                 }
                 $builder = @()
@@ -232,266 +295,5 @@ function Initialize-WorkSpacesReboot {
         }
     }else{
         Write-Host "Restart WorkSpaces was not executed because you answered with"`'$response`'
-    }
-}
-
-function Initialize-WorkSpacesStart {
-    <#
-        .SYNOPSIS
-            This cmdlet will invoke a Start API against the Amazon WorkSpaces in the specified CSV inventory.
-        .DESCRIPTION
-            This cmdlet will ingest your WorkSpaces inventory through a specified CSV path. This is limited to the WorkSpaces that are in a STOPPED state. 
-            The WorkSpaces specified in your CSV will be started.
-        .PARAMETER region
-            This required parameter is a string value for the region you invoking the Start calls in. For example, 'us-east-1'. 
-        .PARAMETER csvPath
-            This is a required string parameter for the file path of your CSV inventory. If the file cannot be found, the cmdlet will exit. 
-        .PARAMETER dryRun
-            This is an optional boolean parameter that, if set to $true, will not invoke the Start API calls. Instead, it will write them to the PowerShell 
-            terminal as a dry run. If unspecified, the APIs will be invoked.
-        .EXAMPLE
-            Initialize-WorkSpacesStart -csvPath ./WorkSpacesInventory.csv -region us-east-1
-            Initialize-WorkSpacesStart -csvPath ./WorkSpacesInventory.csv -dryRun $true -region us-east-1
-    #>
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$region,
-        [Parameter(Mandatory=$true)]
-        [string]$csvPath,
-        [Parameter(Mandatory=$false)]
-        [bool]$dryRun
-    )
-    if(Test-Path $csvPath){
-        $wksInventory = Import-CSV $csvPath
-    }else{
-        Write-Host "The provided CSV path was not found."
-        break
-    }
-    $wksStartList = $wksInventory | where {$_.Region -eq $region} | where {$_.State -eq 'STOPPED'}
-    if($wksStartList.WorkspaceId.count -eq 0){
-        Write-Host "No WorkSpaces are available to be started in the provided CSV."
-        break
-    }
-
-    $response = Read-Host "There are currently"$wksStartList.WorkspaceId.count"WorkSpaces in your list that will be started. Would you like to Start these WorkSpaces? (Y/N)"
-    if($response -like 'Y'){
-        $counter = 0
-        $builder = @()
-        
-        foreach($wks in $wksStartList){
-            $counter++
-            if($counter -eq $wksStartList.WorkspaceId.count){
-                $builder += $wks.WorkSpaceId
-                $callBlock = "Start-WKSWorkspace -Region $region -WorkSpaceId $builder"
-                $scriptblock = [Scriptblock]::Create($callBlock) 
-                if($dryRun -eq $true){
-                    Write-Host $callBlock
-                }else{
-                    try{
-                        Invoke-Command -scriptblock $scriptblock
-                    }Catch{
-                        $msg = $_
-                        $logging = New-Object -TypeName PSobject
-                        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Rebuild"
-                        $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
-                        Write-Host $logging
-                    }
-                }
-            }
-            elseif($counter % 25 -ne 0){ 
-                $builder += $wks.WorkSpaceId + ","
-            }else{
-                $builder += $wks.WorkSpaceId
-                $callBlock = "Start-WKSWorkspace -Region $region -WorkSpaceId $builder"
-                $scriptblock = [Scriptblock]::Create($callBlock) 
-                if($dryRun -eq $true){
-                    Write-Host $callBlock
-                }else{
-                    try{
-                        Invoke-Command -scriptblock $scriptblock
-                    }Catch{
-                        $msg = $_
-                        $logging = New-Object -TypeName PSobject
-                        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Rebuild"
-                        $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
-                        Write-Host $logging
-                    }
-                }
-                $builder = @()
-            }
-        }
-    }else{
-        Write-Host "Start WorkSpaces was not executed because you answered with"`'$response`'
-    }
-}
-
-function Initialize-WorkSpacesStop {
-    <#
-        .SYNOPSIS
-            This cmdlet will invoke a Stop API against the Amazon WorkSpaces in the specified CSV inventory.
-        .DESCRIPTION
-            This cmdlet will ingest your WorkSpaces inventory through a specified CSV path. This is limited to the WorkSpaces that are in an AVAILABLE, 
-            IMPAIRED, UNHEALTHY, or ERROR state. The WorkSpaces specified in your CSV will be stopped.
-        .PARAMETER region
-            This required parameter is a string value for the region you invoking the Start calls in. For example, 'us-east-1'. 
-        .PARAMETER csvPath
-            This is a required string parameter for the file path of your CSV inventory. If the file cannot be found, the cmdlet will exit. 
-        .PARAMETER dryRun
-            This is an optional boolean parameter that, if set to $true, will not invoke the Stop API calls. Instead, it will write them to the PowerShell 
-            terminal as a dry run. If unspecified, the APIs will be invoked.
-        .PARAMETER force
-            This is an optional boolean parameter that, if set to $true, will ignore the users that have a connection state of CONNECTED. Note, by forcing
-            the users connected will lose access during the stop. If unspecified, the connected users will be ignored in the stop call.
-        .EXAMPLE
-            Initialize-WorkSpacesStop -csvPath ./WorkSpacesInventory.csv -region us-east-1
-            Initialize-WorkSpacesStop -csvPath ./WorkSpacesInventory.csv -force $true -region us-east-1
-            Initialize-WorkSpacesStop -csvPath ./WorkSpacesInventory.csv -dryRun $true -region us-east-1
-            Initialize-WorkSpacesStop -csvPath ./WorkSpacesInventory.csv -dryRun $true -force $true -region us-east-1
-    #>
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$region,
-        [Parameter(Mandatory=$true)]
-        [string]$csvPath,
-        [Parameter(Mandatory=$false)]
-        [bool]$dryRun,
-        [Parameter(Mandatory=$false)]
-        [bool]$force
-    )
-    if(Test-Path $csvPath){
-        $wksInventory = Import-CSV $csvPath
-    }else{
-        Write-Host "The provided CSV path was not found."
-        break
-    }
-    if($force -eq $true){
-        $wksStartList = $wksInventory | where {$_.Region -eq $region} | where {($_.State -eq 'AVAILABLE') -or ($_.State -eq 'IMPAIRED') -or ($_.State -eq 'UNHEALTHY') -or ($_.State -eq 'ERROR')}
-    }else{
-        $wksStartList = $wksInventory | where {$_.Region -eq $region} | where {($_.State -eq 'AVAILABLE') -or ($_.State -eq 'IMPAIRED') -or ($_.State -eq 'UNHEALTHY') -or ($_.State -eq 'ERROR')} | where {$_.ConnectionState -eq 'DISCONNECTED'}
-    }
-    if($wksStartList.WorkspaceId.count -eq 0){
-        Write-Host "No WorkSpaces are available to be stopped in the provided CSV."
-        break
-    }
-
-    $response = Read-Host "There are currently"$wksStartList.WorkspaceId.count"WorkSpaces in your list that will be stopped. Would you like to Stop these WorkSpaces? (Y/N)"
-    if($response -like 'Y'){
-        $counter = 0
-        $builder = @()
-        
-        foreach($wks in $wksStartList){
-            $counter++
-            if($counter -eq $wksStartList.WorkspaceId.count){
-                $builder += $wks.WorkSpaceId
-                $callBlock = "Start-WKSWorkspace -Region $region -WorkSpaceId $builder"
-                $scriptblock = [Scriptblock]::Create($callBlock) 
-                if($dryRun -eq $true){
-                    Write-Host $callBlock
-                }else{
-                    try{
-                        Invoke-Command -scriptblock $scriptblock
-                    }Catch{
-                        $msg = $_
-                        $logging = New-Object -TypeName PSobject
-                        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Rebuild"
-                        $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
-                        Write-Host $logging
-                    }
-                }
-            }
-            elseif($counter % 25 -ne 0){ 
-                $builder += $wks.WorkSpaceId + ","
-            }else{
-                $builder += $wks.WorkSpaceId
-                $callBlock = "Start-WKSWorkspace -Region $region -WorkSpaceId $builder"
-                $scriptblock = [Scriptblock]::Create($callBlock) 
-                if($dryRun -eq $true){
-                    Write-Host $callBlock
-                }else{
-                    try{
-                        Invoke-Command -scriptblock $scriptblock
-                    }Catch{
-                        $msg = $_
-                        $logging = New-Object -TypeName PSobject
-                        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Rebuild"
-                        $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
-                        Write-Host $logging
-                    }
-                }
-                $builder = @()
-            }
-        }
-    }else{
-        Write-Host "Stop WorkSpaces was not executed because you answered with"`'$response`'
-    }
-}
-
-function Initialize-WorkSpacesRebuild {
-    <#
-        .SYNOPSIS
-            This cmdlet will invoke a Rebuild API against the Amazon WorkSpaces in the specified CSV inventory.
-        .DESCRIPTION
-            This cmdlet will ingest your WorkSpaces inventory through a specified CSV path. This is limited to the WorkSpaces that are in an AVAILABLE, UNHEALTHY,
-            STOPPED, ERROR, or REBOOTING state. The WorkSpaces specified in your CSV will be rebuilt. Note that the API used for this is one call per WorkSpace. 
-        .PARAMETER region
-            This required parameter is a string value for the region you invoking the Start calls in. For example, 'us-east-1'. 
-        .PARAMETER csvPath
-            This is a required string parameter for the file path of your CSV inventory. If the file cannot be found, the cmdlet will exit. 
-        .PARAMETER dryRun
-            This is an optional boolean parameter that, if set to $true, will not invoke the Rebuild API calls. Instead, it will write them to the PowerShell 
-            terminal as a dry run. If unspecified, the APIs will be invoked.
-        .EXAMPLE
-            Initialize-WorkSpacesRebuild -csvPath ./WorkSpacesInventory.csv -region us-east-1
-            Initialize-WorkSpacesRebuild -csvPath ./WorkSpacesInventory.csv -dryRun $true -region us-east-1
-    #>
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$region,
-        [Parameter(Mandatory=$true)]
-        [string]$csvPath,
-        [Parameter(Mandatory=$false)]
-        [bool]$dryRun
-    )
-    if(Test-Path $csvPath){
-        $wksInventory = Import-CSV $csvPath
-    }else{
-        Write-Host "The provided CSV path was not found."
-        break
-    }
-    $wksStartList = $wksInventory | where {$_.Region -eq $region} | where {($_.State -eq 'AVAILABLE') -or ($_.State -eq 'UNHEALTHY') -or ($_.State -eq 'ERROR') -or ($_.State -eq 'STOPPED') -or ($_.State -eq 'REBOOTING')}
-    if($wksStartList.WorkspaceId.count -eq 0){
-        Write-Host "No WorkSpaces are available to be rebuilt in the provided CSV."
-        break
-    }
-    $response = Read-Host "There are currently Rebuilding"$wksStartList.WorkspaceId.count"WorkSpaces in your list. Would you like to Rebuild these WorkSpaces? (Y/N)"
-    if($response -like 'Y'){
-        $response = Read-Host "The Rebuild action is a potentially destructive action that can result in the loss of data. Are you sure you would like to Rebuild the"$wksStartList.WorkspaceId.count"UNHEALTHY WorkSpaces? (Y/N)"
-        if($response -like 'Y'){
-            foreach($ws in $WorkSpaces){
-                $builder = $ws.WorkSpaceId
-                $callBlock = "Reset-WKSWorkspace -Region $region -WorkSpaceId $builder"
-                $scriptblock = [Scriptblock]::Create($callBlock) 
-                if($dryRun -eq $true){
-                    Write-Host $callBlock
-                }else{
-                    try{
-                        Invoke-Command -scriptblock $scriptblock
-                    }Catch{
-                        $msg = $_
-                        $logging = New-Object -TypeName PSobject
-                        $logging | Add-Member -NotePropertyName "ErrorCode" -NotePropertyValue "Error During Rebuild"
-                        $logging | Add-Member -NotePropertyName "ErrorMessage" -NotePropertyValue $msg
-                        Write-Host $logging
-                    }
-                }
-            }
-        }else{
-            Write-Host "Rebuild WorkSpaces was not executed because you answered with"`'$response`'
-        }
-    }else{
-        Write-Host "Rebuild WorkSpaces was not executed because you answered with"`'$response`'
     }
 }
