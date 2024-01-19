@@ -6,7 +6,7 @@ This repository hosts a PowerShell module to help administrators inventory and r
 | WorkSpaceId | Region | UserName | ComputerName | Compute | RootVolume | UserVolume | RunningMode | Protocol | IPAddress | RegCode | directoryId | State | BundleId | ConnectionState | FirstName | LastName | Email |
 | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: |
 
-> Note that the Active Directory parameters (`FirstName`, `LastName`, `Email`) require the script to be ran from machine that can reach Active Directory from an account that as `Get-ADUser` permissions. 
+> Note that the Active Directory parameters (`FirstName`, `LastName`, `Email`) require the module to be invoked from machine that can reach Active Directory with an account that as [`Get-ADUser`](https://learn.microsoft.com/en-us/powershell/module/activedirectory/get-aduser?view=windowsserver2022-ps) permissions. 
 
 
 ### Usage 
@@ -22,7 +22,7 @@ Get-Help Initialize-WorkSpacesReboot -Full
 ```
 
 ### Walkthrough 
-FOr this walkthrough, you use [AWS CloudShell](https://aws.amazon.com/cloudshell/). CloudShell has [PowerShell.Core](https://github.com/PowerShell/PowerShell#user-content-windows-powershell-vs-powershell-core) and [AWS Tools for PowerShell](https://aws.amazon.com/powershell/) already installed. Note that CloudShell runs outside of your environment so it will not be able to get user details from Active Directory. To get these details in your inventory, invoke the `Get-WorkSpacesInventory` cmdlet from a machine that can reach Active Directory with credentials to call `Get-ADUser`. The assumed role within CloudShell will need Identity Access Management permissions to call:
+For this walkthrough, you use [AWS CloudShell](https://aws.amazon.com/cloudshell/). CloudShell has [PowerShell.Core](https://github.com/PowerShell/PowerShell#user-content-windows-powershell-vs-powershell-core) and [AWS Tools for PowerShell](https://aws.amazon.com/powershell/) already installed. Note that CloudShell runs outside of your environment so it will not be able to get user details from Active Directory. To get these details in your inventory, invoke the `Get-WorkSpacesInventory` cmdlet from a machine that can reach Active Directory with credentials to call `Get-ADUser`. The assumed role within CloudShell will need Identity Access Management permissions to call:
 - [Get-WKSWorkspace](https://docs.aws.amazon.com/powershell/latest/reference/items/Get-WKSWorkspace.html)
 - [Get-WKSWorkspaceDirectories](https://docs.aws.amazon.com/powershell/latest/reference/items/Get-WKSWorkspaceDirectory.html)
 - [Restart-WKSWorkspace](https://docs.aws.amazon.com/powershell/latest/reference/items/Restart-WKSWorkspace.html)
@@ -36,7 +36,7 @@ FOr this walkthrough, you use [AWS CloudShell](https://aws.amazon.com/cloudshell
 5. Generate your inventory by invoking `Get-WorkSpacesInventory -csv $true -region REGION-PLACEHOLDER`. See the **Usage** section for additional usage information. 
 6. You pass the CSV generated in the previous step into the `Initialize-WorkSpacesReboot` cmdlet. If you would like to exclude WorkSpaces from the bulk report, simply update the CSV. To reboot the WorkSpaces in the CSV, invoke `Initialize-WorkSpacesReboot -csvPath ./WorkSpacesInventory.csv -region REGION-PLACEHOLDER`. See the **Usage** section for additional usage information.
 
-**Note** The reboot API call is optimized load each call to the maximum of 25 WorkSpaces. If three API calls fail when calling either cmdlet, the call will exit. 
+**Note:** The reboot API call is optimized load each call to the maximum of 25 WorkSpaces. If three API calls fail when calling either cmdlet, the call will exit. 
 
 
 ## Security
