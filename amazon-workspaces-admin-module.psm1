@@ -58,6 +58,7 @@ function Get-WorkSpacesInventory(){
     $WorkSpacesInventory = @()
     $DeployedDirectories = @()
     $errThreshold = 0
+    $adErr = $false
 
     try{
         $RegionsCall = Get-WKSWorkspaceDirectories -Region $region
