@@ -1,6 +1,6 @@
 ## Amazon WorkSpaces Admin PowerShell Module
 
-This repository hosts a PowerShell module to help administrators inventory and reboot their [Amazon WorkSpaces](https://aws.amazon.com/workspaces/all-inclusive/) at scale. Administrators that need to invoke a bulk reboot to several WorkSpaces to receive service level updates or to apply environmental updates. This can be a time consuming process within the WorkSpaces console. This PowerShell module allows administrators to inventory their WorkSpaces and export the inventory in CSV format. The CSV file can then be used as an input parameter to invoke a reboot on the specified WorkSpaces. 
+This repository hosts a PowerShell module to help administrators inventory and reboot their [Amazon WorkSpaces](https://aws.amazon.com/workspaces/all-inclusive/) at scale. Administrators may need to invoke a bulk reboot to several WorkSpaces to receive service level updates or to apply environmental updates. This can be a time consuming process within the WorkSpaces console. This PowerShell module allows administrators to inventory their WorkSpaces and export the inventory in CSV format. The CSV file can then be used as an input parameter to invoke a reboot on the specified WorkSpaces. 
 
 ### Inventory Format 
 | WorkSpaceId | Region | UserName | ComputerName | Compute | RootVolume | UserVolume | RunningMode | Protocol | IPAddress | RegCode | directoryId | State | BundleId | ConnectionState | FirstName | LastName | Email |
@@ -10,7 +10,7 @@ This repository hosts a PowerShell module to help administrators inventory and r
 
 
 ### Usage 
-To review cmdlet usage, you can run `Get-Help` against the module cmdlets after importing the module. For example:
+To review cmdlet usage, you can run `Get-Help` against the cmdlets after importing the module. For example:
 #### Inventory Cmdlet
 ```powershell
 Get-Help Get-WorkSpacesInventory -Full
@@ -31,10 +31,11 @@ For this walkthrough, you use [AWS CloudShell](https://aws.amazon.com/cloudshell
 #### Using the Module
 1. After authenticating into the [AWS Management Console](https://aws.amazon.com/console/), navigate to [CloudShell](https://console.aws.amazon.com/cloudshell/home?).
 2. Switch to PowerShell by invoking `pwsh`.
-3. Download the module by invoking `wget https://github.com/aws-samples/amazon-workspaces-admin-module/blob/main/amazon-workspaces-admin-module.psm1`.
-4. Import the module by invoking `Import-Module ./amazon-workspaces-admin-module.psm1 -force`.
-5. Generate your inventory by invoking `Get-WorkSpacesInventory -csv $true -region REGION-PLACEHOLDER`. See the **Usage** section for additional usage information. 
-6. You pass the CSV generated in the previous step into the `Initialize-WorkSpacesReboot` cmdlet. If you would like to exclude WorkSpaces from the bulk report, simply update the CSV. To reboot the WorkSpaces in the CSV, invoke `Initialize-WorkSpacesReboot -csvPath ./WorkSpacesInventory.csv -region REGION-PLACEHOLDER`. See the **Usage** section for additional usage information.
+3. Download the module by invoking `git clone https://github.com/aws-samples/amazon-workspaces-admin-module`.
+4. Navigate to the directory by invoking `cd ./amazon-workspaces-admin-module/`
+5. Import the module by invoking `Import-Module ./amazon-workspaces-admin-module.psm1 -force`.
+6. Generate your inventory by invoking `Get-WorkSpacesInventory -csv $true -region REGION-PLACEHOLDER`. See the **Usage** section for additional usage information. 
+7. You pass the CSV generated in the previous step into the `Initialize-WorkSpacesReboot` cmdlet. If you would like to exclude WorkSpaces from the bulk report, simply update the CSV. To reboot the WorkSpaces in the CSV, invoke `Initialize-WorkSpacesReboot -csvPath ./WorkSpacesInventory.csv -region REGION-PLACEHOLDER`. See the **Usage** section for additional usage information.
 
 **Note:** The reboot API call is optimized load each call to the maximum of 25 WorkSpaces. If three API calls fail when calling either cmdlet, the call will exit. 
 
